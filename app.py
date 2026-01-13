@@ -1,5 +1,5 @@
 
-from flask import Flask, render_template_string, request, redirect, url_for, send_from_directory
+from flask import Flask, render_template_string, request, redirect, send_from_directory
 import pandas as pd
 import zipfile, os
 
@@ -23,6 +23,7 @@ HOME_HTML = '''
 <h1 class="text-4xl font-bold mb-6">📡 RadioLog & QSL Manager</h1>
 
 <div class="grid md:grid-cols-3 gap-6">
+
 <div class="bg-white p-5 rounded shadow">
 <h2 class="font-semibold text-lg mb-2">📊 Carnet de log</h2>
 <p class="text-sm text-gray-500">Stockage : /uploads</p>
@@ -30,7 +31,7 @@ HOME_HTML = '''
 <input type="file" name="logfile" accept=".xlsx" required>
 <button class="mt-3 bg-blue-600 text-white px-4 py-2 rounded">Importer</button>
 </form>
-<a href="/log" class="block mt-4 text-blue-700 underline">Voir le carnet</a>
+<a href="/log" class="block mt-4 text-blue-700 underline">📄 Visualiser le carnet</a>
 </div>
 
 <div class="bg-white p-5 rounded shadow">
@@ -44,17 +45,55 @@ HOME_HTML = '''
 </div>
 
 <div class="bg-white p-5 rounded shadow">
-<h2 class="font-semibold text-lg mb-2">🗂️ Régions QSL</h2>
+<h2 class="font-semibold text-lg mb-2">🗂️ QSL par région</h2>
 <ul>
 {% for r in regions %}
 <li><a class="text-blue-700 underline" href="/qsl/{{r}}">📁 {{r}}</a></li>
 {% endfor %}
 </ul>
 </div>
+
 </div>
 </div>
 </body>
 </html>
+'''
+
+LOG_HTML = '''
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-6 bg-gray-100">
+<h2 class="text-2xl font-bold mb-4">📊 Carnet de log</h2>
+<div class="overflow-x-auto bg-white p-4 rounded shadow">
+{{ table|safe }}
+</div>
+<a href="/" class="block mt-4 text-blue-700 underline">⬅ Retour</a>
+</body></html>
+'''
+
+QSL_HTML = '''
+<!doctype html>
+<html><head>
+<meta charset="utf-8">
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="p-6 bg-gray-100">
+<h2 class="text-2xl font-bold mb-4">🖼️ QSL – {{ region }}</h2>
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+{% for f in files %}
+<div class="bg-white p-2 rounded shadow text-center">
+<a href="/qsl/{{ region }}/{{ f }}">
+<img src="/qsl/{{ region }}/{{ f }}" class="h-40 mx-auto object-contain">
+<p class="text-sm mt-2 break-all">{{ f }}</p>
+</a>
+</div>
+{% endfor %}
+</div>
+<a href="/" class="block mt-6 text-blue-700 underline">⬅ Retour</a>
+</body></html>
 '''
 
 @app.route("/")
@@ -77,14 +116,14 @@ def view_log():
     if not os.path.exists(csv_path):
         return "Aucun carnet importé"
     df = pd.read_csv(csv_path)
-    return df.to_html(classes="table-auto border", index=False)
+    table = df.to_html(classes="table-auto border", index=False)
+    return render_template_string(LOG_HTML, table=table)
 
 @app.route("/upload_qsl", methods=["POST"])
 def upload_qsl():
     region = request.form["region"]
     region_path = os.path.join(QSL_FOLDER, region)
     os.makedirs(region_path, exist_ok=True)
-
     for f in request.files.getlist("qslfiles"):
         if f.filename.endswith(".zip"):
             zp = os.path.join(region_path, f.filename)
@@ -100,9 +139,8 @@ def qsl_region(region):
     path = os.path.join(QSL_FOLDER, region)
     if not os.path.exists(path):
         return "Région inconnue"
-    files = os.listdir(path)
-    links = "".join([f'<li><a href="/qsl/{region}/{f}">{f}</a></li>' for f in files])
-    return f"<h2>QSL {region}</h2><ul>{links}</ul>"
+    files = [f for f in os.listdir(path) if f.lower().endswith(('.jpg','.png','.jpeg','.webp','.pdf'))]
+    return render_template_string(QSL_HTML, region=region, files=files)
 
 @app.route("/qsl/<region>/<filename>")
 def qsl_file(region, filename):
